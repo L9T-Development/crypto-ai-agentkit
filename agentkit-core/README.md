@@ -281,11 +281,6 @@ if (require.main === module) {
 
 - [AgentKit Documentation](https://docs.0xgasless.com/docs)
 
-## Security and bug reports
-
-The AgentKit team takes security seriously.
-See [SECURITY.md](../SECURITY.md) for more information.
-
 ## License
 
 Apache-2.0

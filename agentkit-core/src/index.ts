@@ -1,7 +1,5 @@
 /**
  * @module agentkit-core
- * @description Core module for Agentkit
- *
  * Order List of files
  * constants
  * services
