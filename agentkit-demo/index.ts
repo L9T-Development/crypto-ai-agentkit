@@ -1,40 +1,5 @@
-<div align="center">
-  <p>
-    <a href="https://docs.0xgasless.com/docs">
-      <img src="https://fwcsgvyqmolgmbupulmv.supabase.co/storage/v1/object/public/common/repo-banner.png" alt="0xGasless AgentKit" />
-    </a>
-  </p>
-  <h1>0xGasless AgentKit</h1>
-  <p>A powerful toolkit for gasless transactions and account abstraction on EVM chains.</p>
-</div>
-
-## Features
-
-- 🌟 **Gasless Transactions**: Execute transactions without holding native tokens
-- 🔐 **Account Abstraction**: Built on ERC-4337 standard
-- 💱 **Token Operations**: Transfers, swaps, and deployments without gas fees
-- 🔄 **Multi-Chain Support**: Works across major EVM chains
-- 🤖 **AI Integration**: Built-in LangChain compatibility
-
-## Supported Networks
-
-- Base (8453)
-- Fantom (250)
-- Moonbeam (1284)
-- Metis (1088)
-- Avalanche (43114)
-- BSC (56)
-
-## Installation
-
-Using bun:
-
-```bash
-bun add @0xgasless/agentkit
-```
-
-```typescript
-import { Agentkit, LangchainAgentkitToolkit } from "@0xgasless/agentkit";
+import { Agentkit, AgentkitToolkit } from "@0xgasless/agentkit";
+// import { Agentkit, AgentkitToolkit } from "@0xgas/agentkit";
 import { HumanMessage } from "@langchain/core/messages";
 import { MemorySaver } from "@langchain/langgraph";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
@@ -89,7 +54,7 @@ async function initializeAgent() {
     });
 
     // Initialize AgentKit Toolkit and get tools
-    const agentkitToolkit = new LangchainAgentkitToolkit(agentkit);
+    const agentkitToolkit = new AgentkitToolkit(agentkit);
     const tools = agentkitToolkit.getTools();
 
     const memory = new MemorySaver();
@@ -125,36 +90,36 @@ async function initializeAgent() {
  */
 
 //biome-ignore lint/suspicious/noExplicitAny: <explanation>
-async function runAutonomousMode(agent: any, config: any, interval = 10) {
-  console.log("Starting autonomous mode...");
+// async function runAutonomousMode(agent: any, config: any, interval = 10) {
+//   console.log("Starting autonomous mode...");
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    try {
-      const thought =
-        "Be creative and do something interesting on the blockchain. " +
-        "Choose an action or set of actions and execute it that highlights your abilities.";
+//   // eslint-disable-next-line no-constant-condition
+//   while (true) {
+//     try {
+//       const thought =
+//         "Be creative and do something interesting on the blockchain. " +
+//         "Choose an action or set of actions and execute it that highlights your abilities.";
 
-      const stream = await agent.stream({ messages: [new HumanMessage(thought)] }, config);
+//       const stream = await agent.stream({ messages: [new HumanMessage(thought)] }, config);
 
-      for await (const chunk of stream) {
-        if ("agent" in chunk) {
-          console.log(chunk.agent.messages[0].content);
-        } else if ("tools" in chunk) {
-          console.log(chunk.tools.messages[0].content);
-        }
-        console.log("-------------------");
-      }
+//       for await (const chunk of stream) {
+//         if ("agent" in chunk) {
+//           console.log(chunk.agent.messages[0].content);
+//         } else if ("tools" in chunk) {
+//           console.log(chunk.tools.messages[0].content);
+//         }
+//         console.log("-------------------");
+//       }
 
-      await new Promise(resolve => setTimeout(resolve, interval * 1000));
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error("Error:", error.message);
-      }
-      process.exit(1);
-    }
-  }
-}
+//       await new Promise(resolve => setTimeout(resolve, interval * 1000));
+//     } catch (error) {
+//       if (error instanceof Error) {
+//         console.error("Error:", error.message);
+//       }
+//       process.exit(1);
+//     }
+//   }
+// }
 
 /**
  * Run the agent interactively based on user input
@@ -208,35 +173,35 @@ async function runChatMode(agent: any, config: any) {
  *
  * @returns Selected mode
  */
-async function chooseMode(): Promise<"chat" | "auto"> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+// async function chooseMode(): Promise<"chat" | "auto"> {
+//   const rl = readline.createInterface({
+//     input: process.stdin,
+//     output: process.stdout,
+//   });
 
-  const question = (prompt: string): Promise<string> =>
-    new Promise(resolve => rl.question(prompt, resolve));
+//   const question = (prompt: string): Promise<string> =>
+//     new Promise(resolve => rl.question(prompt, resolve));
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    console.log("\nAvailable modes:");
-    console.log("1. chat    - Interactive chat mode");
-    console.log("2. auto    - Autonomous action mode");
+//   // eslint-disable-next-line no-constant-condition
+//   while (true) {
+//     console.log("\nAvailable modes:");
+//     console.log("1. chat    - Interactive chat mode");
+//     console.log("2. auto    - Autonomous action mode");
 
-    const choice = (await question("\nChoose a mode (enter number or name): "))
-      .toLowerCase()
-      .trim();
+//     const choice = (await question("\nChoose a mode (enter number or name): "))
+//       .toLowerCase()
+//       .trim();
 
-    if (choice === "1" || choice === "chat") {
-      rl.close();
-      return "chat";
-    } else if (choice === "2" || choice === "auto") {
-      rl.close();
-      return "auto";
-    }
-    console.log("Invalid choice. Please try again.");
-  }
-}
+//     if (choice === "1" || choice === "chat") {
+//       rl.close();
+//       return "chat";
+//     } else if (choice === "2" || choice === "auto") {
+//       rl.close();
+//       return "auto";
+//     }
+//     console.log("Invalid choice. Please try again.");
+//   }
+// }
 
 /**
  * Start the chatbot agent
@@ -244,13 +209,13 @@ async function chooseMode(): Promise<"chat" | "auto"> {
 async function main() {
   try {
     const { agent, config } = await initializeAgent();
-    const mode = await chooseMode();
+    // const mode = await chooseMode();
 
-    if (mode === "chat") {
     await runChatMode(agent, config);
-    } else {
-      await runAutonomousMode(agent, config);
-    }
+    // if (mode === "chat") {
+    // } else {
+    //   await runAutonomousMode(agent, config);
+    // }
   } catch (error) {
     if (error instanceof Error) {
       console.error("Error:", error.message);
@@ -266,21 +231,3 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-
-
-```
-
-## Available Actions
-
-- `GetBalanceAction`: Check ETH and token balances
-- `SmartTransferAction`: Transfer tokens gaslessly
-- `SwapAction`: Perform token swaps without gas
-- `DeploySmartTokenAction`: Deploy new ERC20 tokens
-
-## Documentation
-
-- [AgentKit Documentation](https://docs.0xgasless.com/docs)
-
-## License
-
-Apache-2.0

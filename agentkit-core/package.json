@@ -15,9 +15,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
-    "lint": "biome lint --write .",
-    "format": "biome format --write .",
+    "lint": "biome lint --write src",
+    "format": "biome format --write src",
     "check": "tsc --noEmit",
     "test": "bunx jest --no-cache --testMatch='**/*_test.ts'",
     "test:dry-run": "bun install && bun ci && bun publish --dry-run",
@@ -27,11 +26,12 @@
     "docs": "bunx --yes typedoc --entryPoints ./src --entryPointStrategy expand --exclude ./src/tests/**/*.ts",
     "docs:serve": "bunx serve ./docs",
     "dev": "bun link && concurrently \"tsc --watch\" \"tsc-alias -w\"",
-    "build:types": "tsc --project ./tsconfig.json && tsc-alias -p ./tsconfig.json",
-    "deploy": "bun run format && bun run lint && bun run clean && bun run build:types && bun run docs"
+    "build": "tsc --project ./tsconfig.json && tsc-alias -p ./tsconfig.json",
+    "prepare": "bun run format && bun run lint && bun run clean && bun run build && bun run docs"
   },
   "dependencies": {
     "@0xgasless/smart-account": "latest",
+    "@langchain/core": "^0.3.40",
     "axios": "^1.7.9",
     "merkletreejs": "^0.4.1",
     "viem": "2",
