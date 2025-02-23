@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ZeroXgaslessSmartAccount, Transaction } from "@0xgasless/smart-account";
 import { encodeFunctionData, parseEther, parseUnits } from "viem";
 import { TokenABI } from "../constants";
-import { sendTransaction } from "../services";
+import { sendTransaction, waitForTransaction } from "../services";
 import { AgentkitAction } from "../agentkit";
 
 const SMART_TRANSFER_PROMPT = `
@@ -27,6 +27,7 @@ export const SmartTransferInput = z
       .string()
       .describe("The token contract address or 'eth' for native ETH transfers"),
     destination: z.string().describe("The recipient address"),
+    wait: z.boolean().optional().describe("Whether to wait for transaction confirmation"),
   })
   .strip()
   .describe("Instructions for transferring tokens from a smart account to an onchain address");
@@ -76,13 +77,29 @@ export async function smartTransfer(
       };
     }
 
-    const receipt = await sendTransaction(wallet, tx);
-    if (!receipt) {
-      return "Transaction failed";
+    const response = await sendTransaction(wallet, tx);
+    if (!response || !response.success) {
+      return `Transaction failed: ${response?.error || "Unknown error"}`;
     }
-    return `Successfully transferred ${args.amount} ${
+
+    if (args.wait) {
+      const status = await waitForTransaction(wallet, response.userOpHash);
+      if (status.status === "confirmed") {
+        return `Successfully transferred ${args.amount} ${
+          isEth ? "ETH" : `tokens from contract ${args.tokenAddress}`
+        } to ${args.destination}.\nTransaction confirmed in block ${status.blockNumber}!`;
+      } else {
+        return `Transaction status: ${status.status}\n${status.error || ""}`;
+      }
+    }
+
+    return `Successfully submitted transfer of ${args.amount} ${
       isEth ? "ETH" : `tokens from contract ${args.tokenAddress}`
-    } to ${args.destination}.\nTransaction hash: ${receipt.transactionHash}`;
+    } to ${args.destination}.\n${response.message}\n\nYou can either:
+1. Check the status by asking: 
+    - "What's the status of transaction ${response.userOpHash}?"
+    - "check for the status of transaction hash above"
+2. Or next time, instruct the agent to wait for confirmation, like: "Transfer 1 ETH to 0x... and wait for confirmation"`;
   } catch (error) {
     return `Error transferring the asset: ${error}`;
   }
