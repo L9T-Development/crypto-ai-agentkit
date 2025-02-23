@@ -34,6 +34,9 @@ export async function getTokenDetails(
 ): Promise<string> {
   try {
     const details = await fetchTokenDetails(wallet, args.tokenAddress);
+    if (!details) {
+      return "Error getting token details";
+    }
     return `
     Token Details:
             Name: ${details.name}

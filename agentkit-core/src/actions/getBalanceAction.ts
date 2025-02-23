@@ -36,6 +36,9 @@ export async function getBalance(
     // Convert string addresses to 0x format if provided
     const tokenAddresses = args.tokenAddresses?.map(addr => addr as `0x${string}`);
     const balances = await getWalletBalance(wallet, tokenAddresses);
+    if (!balances) {
+      return "Error getting balance";
+    }
 
     // Format the balance response
     const balanceStrings = balances.map(
