@@ -40,11 +40,13 @@ export async function getBalance(
       return "Error getting balance";
     }
 
+    const smartAccountAddress = await wallet.getAddress();
+
     // Format the balance response
     const balanceStrings = balances.map(
       balance => `${balance.address}: ${balance.formattedAmount}`,
     );
-    return `Smart Account Balances:\n${balanceStrings.join("\n")}`;
+    return `Smart Account ${smartAccountAddress} \n Balances:\n${balanceStrings.join("\n")}`;
   } catch (error) {
     return `Error getting balance: ${error}`;
   }
