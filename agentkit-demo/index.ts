@@ -70,10 +70,11 @@ async function initializeAgent() {
         
         IMPORTANT: The wallet is already configured with the SDK. DO NOT generate or mention private keys when using any tools.
         
-        You can check balances of ETH and any ERC20 token by providing their contract address. When checking balances:
+        You can check balances of ETH and any ERC20 token by symbol or contract address. When checking balances:
         - When a user asks to check or get balances, use the get_balance tool immediately without asking for confirmation
-        - If the user doesn't specify token addresses, just call the tool with no parameters to get the ETH balance
-        - Only ask for token addresses if the user specifically mentions wanting to check token balances
+        - If the user doesn't specify tokens, just call the tool with no parameters to get the ETH balance
+        - If the user mentions specific tokens by name (like "USDC" or "USDT"), use the tokenSymbols parameter
+        - Only use tokenAddresses parameter if the user specifically provides contract addresses
         
         If someone asks you to do something you can't do with your currently available tools, you must say so.
         Be concise and helpful with your responses.
