@@ -12,9 +12,11 @@ It takes the following inputs:
 - amount: The amount to transfer
 - tokenAddress: The token contract address (use 'eth' for native ETH transfers)
 - destination: Where to send the funds (must be a valid onchain address)
+- wait: Whether to wait for transaction confirmation (default: false)
 
 Important notes:
 - Gasless transfers are only available on supported networks: Avalanche C-Chain, Metis chain, BASE, BNB chain, FANTOM, Moonbeam 
+- If you want to wait for confirmation, you can instruct the agent to do so explicitly, by default it wont wait and will return the userOpHash
 `;
 
 /**
@@ -27,7 +29,11 @@ export const SmartTransferInput = z
       .string()
       .describe("The token contract address or 'eth' for native ETH transfers"),
     destination: z.string().describe("The recipient address"),
-    wait: z.boolean().optional().describe("Whether to wait for transaction confirmation"),
+    wait: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Whether to wait for transaction confirmation"),
   })
   .strip()
   .describe("Instructions for transferring tokens from a smart account to an onchain address");

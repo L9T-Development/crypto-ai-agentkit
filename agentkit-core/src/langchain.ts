@@ -28,8 +28,11 @@ import { z } from "zod";
  * const tools = toolkit.getTools();
  * ```
  *
+ * Important: Once configured, the wallet is ready to use with all tools.
+ * No additional wallet setup or private key generation is needed when using the tools.
+ *
  * Available tools include:
- * - get_balance: Check ETH and token balances
+ * - get_balance: Check ETH and token balances (uses the already configured wallet)
  * - smart_transfer: Transfer tokens gaslessly
  * - swap: Perform token swaps without gas fees
  * - deploy_token: Deploy new ERC20 tokens
