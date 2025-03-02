@@ -33,21 +33,23 @@ export const GetBalanceInput = z
     tokenSymbols: z
       .array(z.string())
       .optional()
-      .describe("Optional list of token symbols (e.g., 'USDC', 'USDT', 'WETH') to get balances for"),
+      .describe(
+        "Optional list of token symbols (e.g., 'USDC', 'USDT', 'WETH') to get balances for",
+      ),
   })
   .strip()
   .describe("Instructions for getting smart account balance");
 
 /**
  * Resolves token symbols to their contract addresses based on the current chain
- * 
+ *
  * @param wallet - The smart account to get chain information from
  * @param symbols - Array of token symbols to resolve
  * @returns Array of token addresses
  */
 async function resolveTokenSymbols(
   wallet: ZeroXgaslessSmartAccount,
-  symbols: string[]
+  symbols: string[],
 ): Promise<`0x${string}`[]> {
   const chainId = wallet.rpcProvider.chain?.id;
   if (!chainId || !tokenMappings[chainId]) {
@@ -83,6 +85,7 @@ export async function getBalance(
 ): Promise<string> {
   try {
     let tokenAddresses: `0x${string}`[] = [];
+    const smartAccount = await wallet.getAddress();
 
     // Process token addresses if provided
     if (args.tokenAddresses && args.tokenAddresses.length > 0) {
@@ -99,11 +102,14 @@ export async function getBalance(
     tokenAddresses = [...new Set(tokenAddresses)];
 
     // Get balances
-    const balances = await getWalletBalance(wallet, tokenAddresses.length > 0 ? tokenAddresses : undefined);
+    const balances = await getWalletBalance(
+      wallet,
+      tokenAddresses.length > 0 ? tokenAddresses : undefined,
+    );
     if (!balances) {
       return "Error getting balance: No balance information returned from the provider";
     }
-    
+
     if (balances.length === 0) {
       return "No balances found for the requested tokens";
     }
@@ -113,7 +119,7 @@ export async function getBalance(
       // Try to find a symbol for this address
       const chainId = wallet.rpcProvider.chain?.id;
       let displayName = balance.address;
-      
+
       if (chainId && tokenMappings[chainId]) {
         const chainTokens = tokenMappings[chainId];
         // Find token symbol by address
@@ -124,11 +130,11 @@ export async function getBalance(
           }
         }
       }
-      
+
       return `${displayName}: ${balance.formattedAmount}`;
     });
-    
-    return `Smart Account Balances:\n${balanceStrings.join("\n")}`;
+
+    return `Smart Account: ${smartAccount}\nBalances:\n${balanceStrings.join("\n")}`;
   } catch (error) {
     console.error("Balance fetch error:", error);
     return `Error getting balance: ${error instanceof Error ? error.message : String(error)}`;
