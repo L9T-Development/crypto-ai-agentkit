@@ -4,9 +4,16 @@ import { getWalletBalance } from "../services";
 import { AgentkitAction } from "../agentkit";
 
 const GET_BALANCE_PROMPT = `
-This tool will get the balance of the smart account associated with the wallet. 
-When no token addresses are provided, it returns the ETH balance by default.
-When token addresses are provided, it returns the balance for each token.
+This tool gets the balance of the smart account that is already configured with the SDK.
+No additional wallet setup or private key generation is needed.
+
+When no token addresses are provided, it returns the native token (ETH) balance by default.
+When token addresses are provided, it returns the balance for each specified token.
+
+USAGE GUIDANCE:
+- When a user asks to check or get balances, use this tool immediately without asking for confirmation
+- If the user doesn't specify token addresses, just call the tool with no parameters to get the ETH balance
+- Only ask for token addresses if the user specifically mentions wanting to check token balances
 
 Note: This action works on supported networks only (Base, Fantom, Moonbeam, Metis, Avalanche, BSC).
 `;
@@ -37,16 +44,22 @@ export async function getBalance(
     const tokenAddresses = args.tokenAddresses?.map(addr => addr as `0x${string}`);
     const balances = await getWalletBalance(wallet, tokenAddresses);
     if (!balances) {
-      return "Error getting balance";
+      return "Error getting balance: No balance information returned from the provider";
+    }
+    
+    if (balances.length === 0) {
+      return "No balances found for the requested tokens";
     }
 
     // Format the balance response
     const balanceStrings = balances.map(
-      balance => `${balance.address}: ${balance.formattedAmount}`,
+      balance => `${balance.address}: ${balance.formattedAmount}`
     );
+    
     return `Smart Account Balances:\n${balanceStrings.join("\n")}`;
   } catch (error) {
-    return `Error getting balance: ${error}`;
+    console.error("Balance fetch error:", error);
+    return `Error getting balance: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
