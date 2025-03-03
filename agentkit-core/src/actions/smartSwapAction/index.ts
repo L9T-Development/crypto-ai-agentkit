@@ -1,9 +1,13 @@
 import { z } from "zod";
-import { ZeroXgaslessSmartAccount } from "@0xgasless/smart-account";
+import { Transaction, ZeroXgaslessSmartAccount } from "@0xgasless/smart-account";
 import { AgentkitAction } from "../../agentkit";
-import { sendTransaction, waitForTransaction, fetchTokenDetails, getDecimals } from "../../services";
-import { tokenMappings } from "../../constants";
-import { parseUnits } from "viem";
+import {
+  sendTransaction,
+  waitForTransaction,
+  formatTokenAmount,
+  resolveTokenSymbol,
+  checkAndApproveTokenAllowance,
+} from "../../services";
 
 const SWAP_PROMPT = `
 This tool allows you to perform gasless token swaps on supported chains.
@@ -17,11 +21,13 @@ USAGE GUIDANCE:
 - Specify the amount to swap (in the input token's units)
 - Optionally set 'wait: true' to wait for transaction confirmation
 - Optionally set a custom slippage (default is "auto")
+- Optionally set 'approveMax: true' to approve maximum token allowance (default is false)
 
 EXAMPLES:
 - Swap by address: "Swap 10 from 0x123... to 0x456..."
 - Swap by symbol: "Swap 10 USDC to ETH"
 - With waiting: "Swap 5 USDT to USDC and wait for confirmation"
+- With max approval: "Swap 10 USDT to ETH with approveMax: true"
 
 Note: This action works on supported networks only (Base, Fantom, Moonbeam, Metis, Avalanche, BSC).
 All swaps are gasless - no native tokens needed for gas fees.
@@ -56,83 +62,14 @@ export const SmartSwapInput = z
       .optional()
       .default(false)
       .describe("Whether to wait for transaction confirmation"),
+    approveMax: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Whether to approve maximum token allowance"),
   })
   .strip()
   .describe("Instructions for swapping tokens");
-
-/**
- * Resolves token symbols to their contract addresses based on the current chain
- *
- * @param wallet - The smart account to get chain information from
- * @param symbol - Token symbol to resolve
- * @returns Token address or null if not found
- */
-async function resolveTokenSymbol(
-  wallet: ZeroXgaslessSmartAccount,
-  symbol: string,
-): Promise<`0x${string}` | null> {
-  const chainId = wallet.rpcProvider.chain?.id;
-  if (!chainId || !tokenMappings[chainId]) {
-    console.warn(`Chain ID ${chainId} not found in token mappings`);
-    return null;
-  }
-
-  const chainTokens = tokenMappings[chainId];
-  const normalizedSymbol = symbol.toUpperCase();
-
-  if (chainTokens[normalizedSymbol]) {
-    return chainTokens[normalizedSymbol];
-  }
-
-  // Special case for native token (ETH, AVAX, BNB, etc.)
-  if (
-    normalizedSymbol === "ETH" ||
-    normalizedSymbol === "AVAX" ||
-    normalizedSymbol === "BNB" ||
-    normalizedSymbol === "FTM" ||
-    normalizedSymbol === "METIS" ||
-    normalizedSymbol === "GLMR"
-  ) {
-    return "0x0000000000000000000000000000000000000000";
-  }
-
-  console.warn(`Token symbol ${normalizedSymbol} not found for chain ID ${chainId}`);
-  return null;
-}
-
-/**
- * Format amount with proper decimals for the API
- * 
- * @param wallet - The smart account to use for querying
- * @param tokenAddress - The token address
- * @param amount - The human-readable amount (e.g., "0.001")
- * @returns The amount formatted with proper decimals
- */
-async function formatTokenAmount(
-  wallet: ZeroXgaslessSmartAccount,
-  tokenAddress: `0x${string}`,
-  amount: string
-): Promise<string> {
-  try {
-    // For native token (address 0x0)
-    if (tokenAddress === "0x0000000000000000000000000000000000000000") {
-      return parseUnits(amount, 18).toString();
-    }
-
-    // Get token decimals
-    const decimals = await getDecimals(wallet, tokenAddress);
-    if (!decimals) {
-      throw new Error(`Could not get decimals for token ${tokenAddress}`);
-    }
-
-    // Parse the amount with proper decimals
-    return parseUnits(amount, Number(decimals)).toString();
-  } catch (error) {
-    console.error("Error formatting token amount:", error);
-    // Fallback to assuming 18 decimals if we can't get the actual decimals
-    return parseUnits(amount, 18).toString();
-  }
-}
 
 export async function smartSwap(
   wallet: ZeroXgaslessSmartAccount,
@@ -147,7 +84,6 @@ export async function smartSwap(
     // Resolve token addresses from symbols if provided
     let tokenInAddress = args.tokenIn;
     let tokenOutAddress = args.tokenOut;
-
     if (args.tokenInSymbol && !tokenInAddress) {
       const resolved = await resolveTokenSymbol(wallet, args.tokenInSymbol);
       if (!resolved) {
@@ -155,7 +91,6 @@ export async function smartSwap(
       }
       tokenInAddress = resolved;
     }
-
     if (args.tokenOutSymbol && !tokenOutAddress) {
       const resolved = await resolveTokenSymbol(wallet, args.tokenOutSymbol);
       if (!resolved) {
@@ -163,7 +98,6 @@ export async function smartSwap(
       }
       tokenOutAddress = resolved;
     }
-
     if (!tokenInAddress || !tokenOutAddress) {
       return "Error: Both input and output token addresses are required";
     }
@@ -171,7 +105,7 @@ export async function smartSwap(
     // Get token details for better user feedback
     let tokenInDetails;
     let tokenOutDetails;
-
+    /*
     try {
       tokenInDetails = await fetchTokenDetails(wallet, tokenInAddress);
       tokenOutDetails = await fetchTokenDetails(wallet, tokenOutAddress);
@@ -179,9 +113,15 @@ export async function smartSwap(
       console.warn("Error fetching token details:", error);
       // Continue even if we can't get token details
     }
+    */
 
     // Format the amount with proper decimals
-    const formattedAmount = await formatTokenAmount(wallet, tokenInAddress as `0x${string}`, args.amount);
+    const formattedAmount = await formatTokenAmount(
+      wallet,
+      tokenInAddress as `0x${string}`,
+      args.amount,
+    );
+    console.log("Formatted amount:", formattedAmount);
 
     // Construct the API URL with query parameters
     const baseUrl = "https://dln.debridge.finance/v1.0/chain/transaction";
@@ -194,58 +134,56 @@ export async function smartSwap(
       slippage: args.slippage || "auto",
       affiliateFeePercent: "0",
     });
-    const url = `${baseUrl}?${queryParams.toString()}`;
-    console.log("Swap API URL:", url);
+    const formedDebridgeApiUrl = `${baseUrl}?${queryParams.toString()}`;
+    console.log("Swap API URL:", formedDebridgeApiUrl);
 
     // First try to get an estimation to check if the swap is possible
     try {
-      const estimationUrl = url.replace("/transaction", "/estimation");
+      const estimationUrl = formedDebridgeApiUrl.replace("/transaction", "/estimation");
       const estimationResponse = await fetch(estimationUrl);
-      const estimationText = await estimationResponse.text();
-      
-      try {
-        const estimationData = JSON.parse(estimationText);
-        if (!estimationResponse.ok) {
-          if (estimationData.message?.includes("insufficient liquidity") || 
-              estimationData.message?.includes("no route found")) {
-            return `Swap not available: Insufficient liquidity or no route found between these tokens.`;
-          }
-          
-          if (estimationData.message?.includes("amount too small")) {
-            return `Swap not available: The amount is too small. Please try a larger amount.`;
-          }
-          
-          console.warn("Estimation failed:", estimationData);
+      let parsedEstimation = await estimationResponse.json();
+      parsedEstimation = parsedEstimation.estimation;
+      console.log(parsedEstimation);
+
+      if (!estimationResponse.ok) {
+        if (
+          parsedEstimation.errorMessage?.includes("insufficient liquidity") ||
+          parsedEstimation.errorMessage?.includes("no route found")
+        ) {
+          return `Swap not available: Insufficient liquidity or no route found between these tokens.`;
         }
-      } catch (parseError) {
-        console.warn("Failed to parse estimation response:", parseError);
+
+        if (parsedEstimation.errorMessage?.includes("amount too small")) {
+          return `Swap not available: The amount is too small. Please try a larger amount.`;
+        }
+
+        console.warn("Estimation failed:", parsedEstimation);
       }
+      tokenInDetails = parsedEstimation.tokenIn;
+      tokenOutDetails = parsedEstimation.tokenOut;
     } catch (error) {
       console.warn("Error checking swap estimation:", error);
       // Continue even if estimation fails
     }
 
-    const response = await fetch(url);
-    const responseText = await response.text();
+    const debridgeResponse = await fetch(formedDebridgeApiUrl);
+    const transactionData = await debridgeResponse.json();
+    console.log(transactionData);
 
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      return `Swap failed: Invalid response from API: ${responseText}`;
-    }
-
-    if (!response.ok) {
+    if (!debridgeResponse.ok || transactionData.errorCode == 0) {
       // Handle specific error cases
-      if (data.message?.includes("insufficient liquidity") || data.message?.includes("no route found")) {
+      if (
+        transactionData.errorMessage?.includes("insufficient liquidity") ||
+        transactionData.errorMessage?.includes("no route found")
+      ) {
         return `Swap failed: Insufficient liquidity or no route found between these tokens.`;
       }
-      
-      if (data.message?.includes("amount too small")) {
+
+      if (transactionData.errorMessage?.includes("amount too small")) {
         return `Swap failed: The amount is too small. Please try a larger amount.`;
       }
-      
-      if (data.message?.includes("Bad Request")) {
+
+      if (transactionData.errorMessage?.includes("Bad Request")) {
         return `Swap failed: Invalid request parameters. Please check your token addresses and amount.
         
 For BNB Chain (56), make sure:
@@ -253,40 +191,102 @@ For BNB Chain (56), make sure:
 2. There is sufficient liquidity for this pair
 3. You have enough balance of the input token`;
       }
-      
-      return `Swap failed: ${data.message || response.statusText}\nDetails: ${JSON.stringify(data.details || {})}`;
+
+      if (
+        transactionData.errorMessage?.includes("transfer amount exceeds allowance") ||
+        transactionData.errorMessage?.includes("BEP20: transfer amount exceeds allowance")
+      ) {
+        return `Swap failed: Token allowance error. You need to approve the swap contract to spend your tokens.
+        
+Please try again with "approveMax: true" parameter to automatically approve token spending.
+Example: "Swap 0.01 USDT to WETH with approveMax: true"`;
+      }
+
+      return `Swap failed: ${transactionData.errorMessage || debridgeResponse.statusText}\nDetails: ${JSON.stringify(transactionData.details || {})}`;
+    }
+    if (!tokenInDetails || !tokenOutDetails) {
+      tokenInDetails = transactionData.tokenIn;
+      tokenOutDetails = transactionData.tokenOut;
     }
 
     // If we only got an estimation without transaction data
-    if (!data.tx) {
+    if (!transactionData.tx) {
       const inSymbol = tokenInDetails?.symbol || args.tokenInSymbol || "tokens";
       const outSymbol = tokenOutDetails?.symbol || args.tokenOutSymbol || "tokens";
 
-      return `Swap estimation:\nInput: ${data.tokenIn.amount} ${data.tokenIn.symbol || inSymbol}\nExpected Output: ${data.tokenOut.amount} ${data.tokenOut.symbol || outSymbol}\nMin Output: ${data.tokenOut.minAmount} ${data.tokenOut.symbol || outSymbol}\nRecommended Slippage: ${data.recommendedSlippage}%`;
+      return `Swap estimation:\nInput: ${transactionData.tokenIn.amount} ${transactionData.tokenIn.symbol || inSymbol}\nExpected Output: ${transactionData.tokenOut.amount} ${transactionData.tokenOut.symbol || outSymbol}\nMin Output: ${transactionData.tokenOut.minAmount} ${transactionData.tokenOut.symbol || outSymbol}\nRecommended Slippage: ${transactionData.recommendedSlippage}%`;
     }
 
-    const tx = {
-      to: data.tx.to as `0x${string}`,
-      data: data.tx.data as `0x${string}`,
-      value: BigInt(data.tx.value || 0),
-    };
+    // For non-native tokens, we need to check and approve allowance if needed
+    if (tokenInAddress !== "0x0000000000000000000000000000000000000000") {
+      const spenderAddress = transactionData.tx.to as `0x${string}`;
 
-    const txResponse = await sendTransaction(wallet, tx);
+      // Check and approve token allowance
+      const approvalResult = await checkAndApproveTokenAllowance(
+        wallet,
+        tokenInAddress as `0x${string}`,
+        spenderAddress,
+        BigInt(formattedAmount),
+        args.approveMax,
+      );
+
+      if (!approvalResult.success) {
+        return `Failed to approve token spending: ${approvalResult.error}`;
+      }
+
+      // If we're waiting for confirmation and there was an approval transaction, wait for it
+      if (approvalResult.userOpHash) {
+        console.log(
+          `Waiting for approval transaction ${approvalResult.userOpHash} to be confirmed...`,
+        );
+        const approvalStatus = await waitForTransaction(wallet, approvalResult.userOpHash);
+
+        if (approvalStatus.status !== "confirmed") {
+          return `Token approval failed: ${approvalStatus.error || "Unknown error"}`;
+        }
+
+        console.log("Token approval confirmed");
+      } else if (approvalResult.userOpHash) {
+        console.log(`Token approval submitted with hash: ${approvalResult.userOpHash}`);
+      }
+    }
+
+    // Now send the swap transaction
+    // const tx = {
+    //   to: data.tx.to as `0x${string}`,
+    //   data: data.tx.data as `0x${string}`,
+    //   value: BigInt(data.tx.value || 0),
+    // };
+
+    const txResponse = await sendTransaction(wallet, transactionData.tx as Transaction);
     if (!txResponse.success) {
-      return `Swap failed: ${txResponse.error}`;
+      if (
+        typeof txResponse.error === "string" &&
+        (txResponse.error.includes("transfer amount exceeds allowance") ||
+          txResponse.error.includes("BEP20: transfer amount exceeds allowance"))
+      ) {
+        return `Swap failed: Token allowance error. You need to approve the swap contract to spend your tokens.
+        
+Please try again with "approveMax: true" parameter to automatically approve token spending.
+Example: "Swap 0.01 USDT to WETH with approveMax: true"`;
+      }
+
+      return `Swap failed: ${
+        typeof txResponse.error === "string" ? txResponse.error : JSON.stringify(txResponse.error)
+      }`;
     }
 
     const inSymbol =
-      data.tokenIn.symbol || tokenInDetails?.symbol || args.tokenInSymbol || "tokens";
+      transactionData.tokenIn.symbol || tokenInDetails?.symbol || args.tokenInSymbol || "tokens";
     const outSymbol =
-      data.tokenOut.symbol || tokenOutDetails?.symbol || args.tokenOutSymbol || "tokens";
+      transactionData.tokenOut.symbol || tokenOutDetails?.symbol || args.tokenOutSymbol || "tokens";
 
     if (args.wait) {
       const status = await waitForTransaction(wallet, txResponse.userOpHash);
       if (status.status === "confirmed") {
         return `Swap completed and confirmed in block ${status.blockNumber}!
-Input: ${data.tokenIn.amount} ${inSymbol}
-Expected Output: ${data.tokenOut.amount} ${outSymbol}
+Input: ${transactionData.tokenIn.amount} ${inSymbol}
+Expected Output: ${transactionData.tokenOut.amount} ${outSymbol}
 Transaction Hash: ${status.receipt?.receipt?.transactionHash || txResponse.userOpHash}`;
       } else {
         return `Swap status: ${status.status}
@@ -296,13 +296,14 @@ User Operation Hash: ${txResponse.userOpHash}`;
     }
 
     return `Swap order submitted successfully!
-Input: ${data.tokenIn.amount} ${inSymbol}
-Expected Output: ${data.tokenOut.amount} ${outSymbol}
+Input: ${transactionData.tokenIn.amount} ${inSymbol}
+Expected Output: ${transactionData.tokenOut.amount} ${outSymbol}
 User Operation Hash: ${txResponse.userOpHash}
 
 You can either:
 1. Check the status by asking: "What's the status of transaction ${txResponse.userOpHash}?"
-2. Or next time, add "wait: true" to wait for confirmation, like: "Swap 100 USDC to USDT and wait for confirmation"`;
+2. Or next time, add "wait: true" to wait for confirmation, like: "Swap 100 USDC to USDT and wait for confirmation"
+3. If you encounter allowance errors, add "approveMax: true" to approve maximum token spending`;
   } catch (error) {
     console.error("Swap error:", error);
     return `Error creating swap order: ${error instanceof Error ? error.message : String(error)}`;
