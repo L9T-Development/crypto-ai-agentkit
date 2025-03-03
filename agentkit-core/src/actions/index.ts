@@ -6,6 +6,7 @@ import { CheckTransactionAction } from "./checkTransactionAction";
 import { SmartSwapAction } from "./smartSwapAction";
 import { AgentkitAction, ActionSchemaAny } from "../agentkit";
 import { GetAddressAction } from "./getAddressAction";
+import { GetAddressAction } from "./getAddressAction";
 
 export function getAllAgentkitActions(): AgentkitAction<ActionSchemaAny>[] {
   return [
