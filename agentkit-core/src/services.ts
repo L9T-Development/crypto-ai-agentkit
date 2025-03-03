@@ -6,28 +6,13 @@ import {
   UserOpResponse,
   UserOpReceipt,
 } from "@0xgasless/smart-account";
-import { TokenABI } from "./constants";
+import { TokenABI, tokenMappings } from "./constants";
 import { generatePrivateKey } from "viem/accounts";
-import { getContract } from "viem";
+import { encodeFunctionData, getContract, parseUnits } from "viem";
+import { TransactionResponse, TransactionStatus, TokenDetails } from "./types";
 
 const DEFAULT_WAIT_INTERVAL = 5000; // 5 seconds
 const DEFAULT_MAX_DURATION = 30000; // 30 seconds
-
-export type TokenDetails = {
-  name: string;
-  symbol: string;
-  decimals: bigint;
-  address: `0x${string}`;
-  chainId: number;
-};
-
-export type TransactionStatus = {
-  status: "pending" | "confirmed" | "failed";
-  receipt?: UserOpReceipt;
-  error?: string;
-  blockNumber?: number;
-  blockConfirmations?: number;
-};
 
 export function createWallet() {
   const wallet = generatePrivateKey();
@@ -40,7 +25,10 @@ export function createWallet() {
  * @param tx The transaction to send
  * @returns The user operation response or false if the request failed
  */
-export async function sendTransaction(wallet: ZeroXgaslessSmartAccount, tx: Transaction) {
+export async function sendTransaction(
+  wallet: ZeroXgaslessSmartAccount,
+  tx: Transaction,
+): Promise<TransactionResponse> {
   try {
     const request = await wallet.sendTransaction(tx, {
       paymasterServiceData: {
@@ -223,4 +211,195 @@ export async function fetchTokenDetails(
     address: tokenAddress as `0x${string}`,
     chainId: wallet.rpcProvider.chain?.id ?? 0,
   } as TokenDetails;
+}
+
+/**
+ * Resolves token symbols to their contract addresses based on the current chain
+ *
+ * @param wallet - The smart account to get chain information from
+ * @param symbol - Token symbol to resolve
+ * @returns Token address or null if not found
+ */
+export async function resolveTokenSymbol(
+  wallet: ZeroXgaslessSmartAccount,
+  symbol: string,
+): Promise<`0x${string}` | null> {
+  const chainId = wallet.rpcProvider.chain?.id;
+  if (!chainId || !tokenMappings[chainId]) {
+    console.warn(`Chain ID ${chainId} not found in token mappings`);
+    return null;
+  }
+
+  const chainTokens = tokenMappings[chainId];
+  const normalizedSymbol = symbol.toUpperCase();
+
+  if (chainTokens[normalizedSymbol]) {
+    return chainTokens[normalizedSymbol];
+  }
+
+  // Special case for native token (ETH, AVAX, BNB, etc.)
+  if (
+    normalizedSymbol === "ETH" ||
+    normalizedSymbol === "AVAX" ||
+    normalizedSymbol === "BNB" ||
+    normalizedSymbol === "FTM" ||
+    normalizedSymbol === "METIS" ||
+    normalizedSymbol === "GLMR"
+  ) {
+    return "0x0000000000000000000000000000000000000000";
+  }
+
+  console.warn(`Token symbol ${normalizedSymbol} not found for chain ID ${chainId}`);
+  return null;
+}
+
+/**
+ * Format amount with proper decimals for the API
+ *
+ * @param wallet - The smart account to use for querying
+ * @param tokenAddress - The token address
+ * @param amount - The human-readable amount (e.g., "0.001")
+ * @returns The amount formatted with proper decimals
+ */
+export async function formatTokenAmount(
+  wallet: ZeroXgaslessSmartAccount,
+  tokenAddress: `0x${string}`,
+  amount: string,
+): Promise<string> {
+  try {
+    // For native token (address 0x0)
+    if (tokenAddress === "0x0000000000000000000000000000000000000000") {
+      return parseUnits(amount, 18).toString();
+    }
+
+    // Get token decimals
+    const decimals = await getDecimals(wallet, tokenAddress);
+    if (!decimals) {
+      throw new Error(`Could not get decimals for token ${tokenAddress}`);
+    }
+
+    // Parse the amount with proper decimals
+    return parseUnits(amount, Number(decimals)).toString();
+  } catch (error) {
+    console.error("Error formatting token amount:", error);
+    // Fallback to assuming 18 decimals if we can't get the actual decimals
+    return parseUnits(amount, 18).toString();
+  }
+}
+
+/**
+ * Check token allowance for a spender
+ *
+ * @param wallet - The smart account to use
+ * @param tokenAddress - The token address to check allowance for
+ * @param spenderAddress - The address that needs allowance
+ * @returns Current allowance as bigint or false if failed
+ */
+export async function checkTokenAllowance(
+  wallet: ZeroXgaslessSmartAccount,
+  tokenAddress: `0x${string}`,
+  spenderAddress: `0x${string}`,
+): Promise<bigint> {
+  try {
+    // Skip for native token
+    if (
+      tokenAddress === "0x0000000000000000000000000000000000000000" ||
+      tokenAddress === "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+    ) {
+      return BigInt(0);
+    }
+    const userAddress = await wallet.getAddress();
+    const allowance = (await wallet.rpcProvider.readContract({
+      abi: TokenABI,
+      address: tokenAddress,
+      functionName: "allowance",
+      args: [userAddress, spenderAddress],
+    })) as bigint;
+
+    return allowance;
+  } catch (error) {
+    console.error("Error checking token allowance:", error);
+    return BigInt(0);
+  }
+}
+
+/**
+ * Approve token spending for a spender
+ *
+ * @param wallet - The smart account to use
+ * @param tokenAddress - The token address to approve
+ * @param spenderAddress - The address to approve spending for
+ * @param amount - The amount to approve (or max uint256 for unlimited)
+ * @returns Transaction response
+ */
+export async function approveToken(
+  wallet: ZeroXgaslessSmartAccount,
+  tokenAddress: `0x${string}`,
+  spenderAddress: `0x${string}`,
+  amount: bigint,
+): Promise<TransactionResponse> {
+  try {
+    // Skip approval for native token
+    if (
+      tokenAddress === "0x0000000000000000000000000000000000000000" ||
+      tokenAddress === "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+    ) {
+      return { success: true, userOpHash: "" };
+    }
+
+    // Create approval transaction
+    const tx = {
+      to: tokenAddress,
+      data: encodeFunctionData({
+        abi: TokenABI,
+        functionName: "approve",
+        args: [spenderAddress, amount],
+      }),
+      value: BigInt(0),
+    };
+
+    // Send approval transaction
+    return await sendTransaction(wallet, tx);
+  } catch (error) {
+    console.error("Error approving token:", error);
+    return {
+      success: false,
+      userOpHash: "",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Check and approve token allowance if needed
+ *
+ * @param wallet - The smart account to use
+ * @param tokenAddress - The token address to check allowance for
+ * @param spenderAddress - The address that needs allowance
+ * @param amount - The amount that needs to be approved
+ * @param approveMax - Whether to approve maximum amount
+ * @returns Success status and any error message
+ */
+export async function checkAndApproveTokenAllowance(
+  wallet: ZeroXgaslessSmartAccount,
+  tokenAddress: `0x${string}`,
+  spenderAddress: `0x${string}`,
+  amount: bigint,
+  approveMax: boolean = false,
+): Promise<TransactionResponse> {
+  if (
+    tokenAddress === "0x0000000000000000000000000000000000000000" ||
+    tokenAddress === "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+  ) {
+    return { success: true, userOpHash: "" };
+  }
+  const currentAllowance = await checkTokenAllowance(wallet, tokenAddress, spenderAddress);
+  console.log(`Current allowance: ${currentAllowance}, Required: ${amount}`);
+  if (currentAllowance >= amount && !approveMax) {
+    console.log("Allowance is sufficient, no need to approve");
+    return { success: true, userOpHash: "" };
+  }
+  const maxUint256 = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+  const approvalAmount = approveMax ? maxUint256 : amount;
+  return await approveToken(wallet, tokenAddress, spenderAddress, approvalAmount);
 }
