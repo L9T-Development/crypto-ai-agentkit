@@ -233,13 +233,6 @@ Example: "Swap 0.01 USDT to WETH with approveMax: true"`;
       }
     }
 
-    // Now send the swap transaction
-    // const tx = {
-    //   to: data.tx.to as `0x${string}`,
-    //   data: data.tx.data as `0x${string}`,
-    //   value: BigInt(data.tx.value || 0),
-    // };
-
     const txResponse = await sendTransaction(wallet, transactionData.tx as Transaction);
     if (!txResponse.success) {
       if (
