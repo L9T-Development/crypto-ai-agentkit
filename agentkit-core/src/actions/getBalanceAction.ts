@@ -114,8 +114,6 @@ export async function getBalance(
       return "No balances found for the requested tokens";
     }
 
-    const smartAccountAddress = await wallet.getAddress();
-
     // Format the balance response
     const balanceStrings = balances.map(balance => {
       // Try to find a symbol for this address
