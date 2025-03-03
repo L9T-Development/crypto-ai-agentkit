@@ -105,15 +105,6 @@ export async function smartSwap(
     // Get token details for better user feedback
     let tokenInDetails;
     let tokenOutDetails;
-    /*
-    try {
-      tokenInDetails = await fetchTokenDetails(wallet, tokenInAddress);
-      tokenOutDetails = await fetchTokenDetails(wallet, tokenOutAddress);
-    } catch (error) {
-      console.warn("Error fetching token details:", error);
-      // Continue even if we can't get token details
-    }
-    */
 
     // Format the amount with proper decimals
     const formattedAmount = await formatTokenAmount(
@@ -121,7 +112,6 @@ export async function smartSwap(
       tokenInAddress as `0x${string}`,
       args.amount,
     );
-    console.log("Formatted amount:", formattedAmount);
 
     // Construct the API URL with query parameters
     const baseUrl = "https://dln.debridge.finance/v1.0/chain/transaction";
@@ -135,7 +125,6 @@ export async function smartSwap(
       affiliateFeePercent: "0",
     });
     const formedDebridgeApiUrl = `${baseUrl}?${queryParams.toString()}`;
-    console.log("Swap API URL:", formedDebridgeApiUrl);
 
     // First try to get an estimation to check if the swap is possible
     try {
@@ -143,7 +132,6 @@ export async function smartSwap(
       const estimationResponse = await fetch(estimationUrl);
       let parsedEstimation = await estimationResponse.json();
       parsedEstimation = parsedEstimation.estimation;
-      console.log(parsedEstimation);
 
       if (!estimationResponse.ok) {
         if (
@@ -168,7 +156,6 @@ export async function smartSwap(
 
     const debridgeResponse = await fetch(formedDebridgeApiUrl);
     const transactionData = await debridgeResponse.json();
-    console.log(transactionData);
 
     if (!debridgeResponse.ok || transactionData.errorCode == 0) {
       // Handle specific error cases
@@ -236,16 +223,11 @@ Example: "Swap 0.01 USDT to WETH with approveMax: true"`;
 
       // If we're waiting for confirmation and there was an approval transaction, wait for it
       if (approvalResult.userOpHash) {
-        console.log(
-          `Waiting for approval transaction ${approvalResult.userOpHash} to be confirmed...`,
-        );
         const approvalStatus = await waitForTransaction(wallet, approvalResult.userOpHash);
 
         if (approvalStatus.status !== "confirmed") {
           return `Token approval failed: ${approvalStatus.error || "Unknown error"}`;
         }
-
-        console.log("Token approval confirmed");
       } else if (approvalResult.userOpHash) {
         console.log(`Token approval submitted with hash: ${approvalResult.userOpHash}`);
       }
