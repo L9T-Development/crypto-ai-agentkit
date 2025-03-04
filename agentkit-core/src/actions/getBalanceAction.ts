@@ -8,16 +8,14 @@ const GET_BALANCE_PROMPT = `
 This tool gets the balance of the smart account that is already configured with the SDK.
 No additional wallet setup or private key generation is needed.
 
-You can check balances in two ways:
-1. By token ticker symbols (e.g., "ETH", "USDC", "USDT", "WETH", etc.)
-2. By token contract addresses (e.g., "0x...")
-
-When no tokens are specified, it returns the native token (ETH) balance by default.
-When tokens are specified, it returns the balance for each specified token.
+You can check balances in three ways:
+1. By default, it returns balances for all supported tokens on the current chain
+2. By token ticker symbols (e.g., "ETH", "USDC", "USDT", "WETH", etc.)
+3. By token contract addresses (e.g., "0x...")
 
 USAGE GUIDANCE:
 - When a user asks to check or get balances, use this tool immediately without asking for confirmation
-- If the user doesn't specify tokens, just call the tool with no parameters to get the ETH balance
+- If the user doesn't specify tokens, call the tool with no parameters to get ALL token balances
 - If the user mentions specific tokens by name (like "USDC" or "USDT"), use the tokenSymbols parameter
 - Only use tokenAddresses parameter if the user specifically provides contract addresses
 
@@ -86,22 +84,35 @@ export async function getBalance(
   try {
     let tokenAddresses: `0x${string}`[] = [];
     const smartAccount = await wallet.getAddress();
+    const chainId = wallet.rpcProvider.chain?.id;
 
-    // Process token addresses if provided
-    if (args.tokenAddresses && args.tokenAddresses.length > 0) {
-      tokenAddresses = args.tokenAddresses.map(addr => addr as `0x${string}`);
-    }
+    // If no specific tokens requested, get all tokens from tokenMappings for the current chain
+    if (
+      (!args.tokenAddresses || args.tokenAddresses.length === 0) &&
+      (!args.tokenSymbols || args.tokenSymbols.length === 0)
+    ) {
+      if (chainId && tokenMappings[chainId]) {
+        // Get all token addresses for the current chain
+        tokenAddresses = [...tokenAddresses, ...Object.values(tokenMappings[chainId])];
+      } else {
+        console.warn(`Chain ID ${chainId} not found in token mappings or is empty`);
+      }
+    } else {
+      // Process token addresses if provided
+      if (args.tokenAddresses && args.tokenAddresses.length > 0) {
+        tokenAddresses = args.tokenAddresses.map(addr => addr as `0x${string}`);
+      }
 
-    // Process token symbols if provided
-    if (args.tokenSymbols && args.tokenSymbols.length > 0) {
-      const symbolAddresses = await resolveTokenSymbols(wallet, args.tokenSymbols);
-      tokenAddresses = [...tokenAddresses, ...symbolAddresses];
+      // Process token symbols if provided
+      if (args.tokenSymbols && args.tokenSymbols.length > 0) {
+        const symbolAddresses = await resolveTokenSymbols(wallet, args.tokenSymbols);
+        tokenAddresses = [...tokenAddresses, ...symbolAddresses];
+      }
     }
 
     // Remove duplicates
     tokenAddresses = [...new Set(tokenAddresses)];
 
-    // Get balances
     const balances = await getWalletBalance(
       wallet,
       tokenAddresses.length > 0 ? tokenAddresses : undefined,
@@ -115,26 +126,69 @@ export async function getBalance(
     }
 
     // Format the balance response
-    const balanceStrings = balances.map(balance => {
-      // Try to find a symbol for this address
-      const chainId = wallet.rpcProvider.chain?.id;
-      let displayName = balance.address;
+    const balanceStrings = balances
+      // Filter out zero balances unless explicitly requested specific tokens
+      .filter(balance => {
+        // If user requested specific tokens, show all balances including zeros
+        if (
+          (args.tokenAddresses && args.tokenAddresses.length > 0) ||
+          (args.tokenSymbols && args.tokenSymbols.length > 0)
+        ) {
+          return true;
+        }
+        // Otherwise, only show non-zero balances
+        return balance.formattedAmount !== "0" && balance.formattedAmount !== "0.0";
+      })
+      .map(balance => {
+        // Try to find a symbol for this address
+        const chainId = wallet.rpcProvider.chain?.id;
+        let displayName = balance.address;
 
-      if (chainId && tokenMappings[chainId]) {
-        const chainTokens = tokenMappings[chainId];
-        // Find token symbol by address
-        for (const [symbol, address] of Object.entries(chainTokens)) {
-          if (address.toLowerCase() === balance.address.toLowerCase()) {
-            displayName = symbol;
-            break;
+        // Special case for native token (ETH, BNB, etc.)
+        if (balance.address.toLowerCase() === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee") {
+          // Use chain-specific native token name if available
+          if (chainId === 56) {
+            displayName = "BNB";
+          } else if (chainId === 43114) {
+            displayName = "AVAX";
+          } else if (chainId === 250) {
+            displayName = "FTM";
+          } else if (chainId === 1088) {
+            displayName = "METIS";
+          } else if (chainId === 8453) {
+            displayName = "ETH";
+          } else if (chainId === 1284) {
+            displayName = "GLMR";
+          } else {
+            displayName = "ETH";
+          }
+        } else if (chainId && tokenMappings[chainId]) {
+          const chainTokens = tokenMappings[chainId];
+          // Find token symbol by address
+          for (const [symbol, address] of Object.entries(chainTokens)) {
+            if (address.toLowerCase() === balance.address.toLowerCase()) {
+              displayName = symbol;
+              break;
+            }
           }
         }
-      }
 
-      return `${displayName}: ${balance.formattedAmount}`;
-    });
+        return `${displayName}: ${balance.formattedAmount}`;
+      });
 
-    return `Smart Account: ${smartAccount}\nBalances:\n${balanceStrings.join("\n")}`;
+    // Sort balances alphabetically by token name for better readability
+    balanceStrings.sort();
+
+    const responseTitle =
+      tokenAddresses.length > 0 && !args.tokenAddresses?.length && !args.tokenSymbols?.length
+        ? "All Token Balances:"
+        : "Balances:";
+
+    if (balanceStrings.length === 0) {
+      return `Smart Account: ${smartAccount}\n${responseTitle}\nNo non-zero balances found`;
+    }
+
+    return `Smart Account: ${smartAccount}\n${responseTitle}\n${balanceStrings.join("\n")}`;
   } catch (error) {
     console.error("Balance fetch error:", error);
     return `Error getting balance: ${error instanceof Error ? error.message : String(error)}`;
