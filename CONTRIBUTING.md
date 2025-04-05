@@ -1,5 +1,5 @@
-# 0xGasless Agentkit Contributing Guide
-Thank you for your interest in contributing to 0xGasless Agentkit! We welcome all contributions, no matter how big or small. Some of the ways you can contribute include:
+# 0xTan1319 Agentkit Contributing Guide
+Thank you for your interest in contributing to 0xTan1319 Agentkit! We welcome all contributions, no matter how big or small. Some of the ways you can contribute include:
 - Adding new actions to the core package
 - Updating existing Langchain Toolkits or adding new Langchain Toolkits to support new tools
 - Creating new AI frameworks extensions
@@ -7,11 +7,6 @@ Thank you for your interest in contributing to 0xGasless Agentkit! We welcome al
 
 ### Set-up
 
-Clone the repo by running:
-
-```bash
-git clone git@github.com:0xgasless/0xgasless-agentkit.git
-```
 
 ## Python Development
 ### Prerequisites
@@ -20,7 +15,6 @@ git clone git@github.com:0xgasless/0xgasless-agentkit.git
 - Poetry for package management and tooling
   - [Poetry Installation Instructions](https://python-poetry.org/docs/#installation)
 
-`agentkit-langchain` also requires a [0xGasless API Key](https://portal.0xgasless.com/access/api).
 
 ### Development Tools
 #### Formatting
@@ -290,27 +284,6 @@ For both Python and Typescript, follow these steps:
     - Add any additional ENV requirements
 
 
-
-## Changelog
-- For new features and bug fixes, please add a new changelog entry to the `CHANGELOG.md` file in the appropriate packages and include that in your Pull Request.
-
-## Pull Request Process
-
-1. Create a new branch for your changes
-2. Make your changes following the coding standards
-3. Add tests for any new functionality
-4. Update documentation as needed
-5. Update the CHANGELOG.md
-6. Submit a pull request
-
-## Getting Help
-
-If you have questions or need help, please:
-1. Check the existing documentation
-2. Search through existing issues
-3. Create a new issue with your question
-
-Thank you for contributing to CDP AgentKit!
 
 
 
